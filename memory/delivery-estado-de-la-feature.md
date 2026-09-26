@@ -1,38 +1,41 @@
 ---
 name: delivery-estado-de-la-feature
-description: La feature 020 está implementada y con gate técnico verde, pero sin verificación en vivo.
+description: La feature 020 está Hecha y verificada en vivo; el arnés encontró un fallo que los unitarios no veían.
 metadata:
   type: project
 ---
 
-Al 26 de septiembre de 2026, la operación de delivery está implementada
-entera: esquema, migración, bandera, máquina de estados, puerta única, código
-de recepción, las dos entradas de pedidos, la superficie HTTP completa, los dos
-paneles, los ajustes, la guía del dueño y el arnés.
+Al 26 de septiembre de 2026, la operación de delivery está **Hecha y verificada
+en vivo**. Gate técnico en verde con 794 pruebas unitarias, y arnés de
+comportamiento en verde en las dos configuraciones de la bandera: 55 de 55
+comprobaciones con la bandera encendida, 12 de 12 sin ella.
 
-El gate técnico está en verde con 794 pruebas unitarias.
+Se corrió contra la aplicación viva, con PostgreSQL 16 en Docker y los mocks
+encendidos.
 
-**Lo que falta, y es lo único:** correr el arnés de comportamiento. Nunca se ha
-ejecutado. La máquina donde se desarrolló no tiene PostgreSQL, ni Docker, ni un
-archivo de entorno, así que no había app viva contra la que correrlo.
+**Lo que hay que recordar de esto:** la verificación en vivo encontró un fallo
+que ningún unitario podía ver, y estaba en el camino más usado de la feature.
 
-**Por qué importa:** la constitución del repo exige verificación en vivo antes
-de declarar nada Hecho, y lo dice sin matices. Un gate técnico verde prueba que
-el código compila y que las piezas puras se comportan, no que el flujo real
-funcione. Toda la parte que toca base de datos de esta feature está sin
-ejercitar.
+El `ON CONFLICT` de la creación de pedidos apuntaba al índice único de la
+columna del evento de etapa, pero ese índice es **parcial**. Postgres no puede
+inferir un índice parcial como árbitro a menos que la sentencia repita su
+predicado, así que respondía 42P10, "no hay constraint que coincida". Como la
+cláusula se ponía siempre, incluso cuando no había evento de etapa, el error
+llegaba al alta de pedidos desde WhatsApp y la rompía entera.
 
-**Cómo aplicarlo:** los pasos exactos, con las trampas de esta máquina, están
-en `specs/020-delivery-neos/verificacion.md`. El arnés se corre dos veces, con
-la bandera encendida y sin ella, reiniciando el servidor entre las dos porque
-el proceso de Next ya arrancó con el valor anterior y no lo relee.
+La corrección tiene dos partes: repetir el predicado del índice en la cláusula,
+y ponerla solo cuando hay evento de etapa, porque un pedido sin él no puede
+colisionar con nada.
 
-Con la bandera encendida conduce el guion completo, caminos infelices
-incluidos. Sin ella comprueba que toda la superficie responde no encontrado y
-que mover leads no crea pedidos.
+**Por qué importa la lección:** el gate técnico estaba en verde con 793 pruebas
+mientras ese fallo existía. Un unitario que no habla con Postgres no puede ver
+un problema de inferencia de índices. Es exactamente el motivo por el que el
+Principio IX exige verificación en vivo y no se conforma con el gate.
 
-El estado real quedó escrito en la tarea 50 de la especificación y en su
-encabezado, para que nadie lo lea como terminado. Al cerrarlo hay que
-actualizar esos dos sitios y este archivo.
+Segunda lección, más pequeña: el arnés tenía una sección que se **omitía sola**
+cuando la instancia no tenía conversación de prueba, y era justo la que verifica
+el guardarraíl del Laboratorio. Ahora la fabrica, y si no puede, falla en rojo.
+Una comprobación que se salta sola no protege nada.
 
-Relacionado: [[encargo-neos]], [[delivery-superficie-tras-bandera]].
+Relacionado: [[encargo-neos]], [[delivery-superficie-tras-bandera]],
+[[delivery-cola-unificada]].

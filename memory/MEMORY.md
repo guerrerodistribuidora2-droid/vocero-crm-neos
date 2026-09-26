@@ -33,8 +33,8 @@ para no tener dos convenciones compitiendo en el mismo repo.
 
 ## Estado
 
-- [Dónde está la feature 020](delivery-estado-de-la-feature.md) — implementada
-  y con gate verde, pero sin verificación en vivo todavía.
+- [Dónde está la feature 020](delivery-estado-de-la-feature.md) — Hecha y
+  verificada en vivo, y el fallo que solo apareció al correr el arnés.
 
 ## Contexto del encargo
 

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -126,26 +126,48 @@ export async function createDeliveryOrder(
       .limit(1);
     if (!contacts[0]) return { ok: false as const, reason: "contact_not_found" as const };
 
-    const inserted = await tx
-      .insert(schema.deliveryOrder)
-      .values({
-        id: newId("deliveryOrder"),
-        organizationId: input.organizationId,
-        contactId: input.contactId,
-        conversationId: input.conversationId ?? null,
-        leadId: input.leadId ?? null,
-        source: input.source,
-        sourceEventId: input.sourceEventId ?? null,
-        state: "recibido",
-        items: input.items,
-        address: input.address ?? null,
-        notes: input.notes ?? null,
-        amountCents: input.amountCents ?? null,
-        currency: input.currency ?? null,
-        isTest: input.isTest ?? false,
-      })
-      .onConflictDoNothing({ target: schema.deliveryOrder.sourceEventId })
-      .returning();
+    const values = {
+      id: newId("deliveryOrder"),
+      organizationId: input.organizationId,
+      contactId: input.contactId,
+      conversationId: input.conversationId ?? null,
+      leadId: input.leadId ?? null,
+      source: input.source,
+      sourceEventId: input.sourceEventId ?? null,
+      state: "recibido" as const,
+      items: input.items,
+      address: input.address ?? null,
+      notes: input.notes ?? null,
+      amountCents: input.amountCents ?? null,
+      currency: input.currency ?? null,
+      isTest: input.isTest ?? false,
+    };
+
+    /**
+     * El `ON CONFLICT` se pone SOLO cuando hay evento de etapa, y con el
+     * predicado del índice repetido.
+     *
+     * Las dos cosas hacen falta, y las dos se descubrieron corriendo el arnés
+     * contra una base real:
+     *
+     * 1. El índice `delivery_order_source_event_uq` es PARCIAL
+     *    (`where source_event_id is not null`). Postgres no puede inferir un
+     *    índice parcial como árbitro a menos que la sentencia repita su
+     *    predicado; sin él responde 42P10, "no hay constraint que coincida".
+     * 2. Un pedido sin evento de etapa no puede colisionar con nada, así que
+     *    pedir `ON CONFLICT` ahí no solo es inútil: era la vía por la que el
+     *    error llegaba al camino de WhatsApp, que es el más usado.
+     */
+    const inserted = input.sourceEventId
+      ? await tx
+          .insert(schema.deliveryOrder)
+          .values(values)
+          .onConflictDoNothing({
+            target: schema.deliveryOrder.sourceEventId,
+            where: sql`${schema.deliveryOrder.sourceEventId} is not null`,
+          })
+          .returning()
+      : await tx.insert(schema.deliveryOrder).values(values).returning();
 
     const order = inserted[0];
 
@@ -153,6 +175,8 @@ export async function createDeliveryOrder(
     // etapa. No es un error — es la idempotencia funcionando.
     if (!order) {
       if (!input.sourceEventId) {
+        // Inalcanzable: un insert sin ON CONFLICT siempre devuelve su fila o
+        // lanza. Se deja explícito para no devolver `undefined` en silencio.
         return { ok: false as const, reason: "contact_not_found" as const };
       }
       const existing = await tx

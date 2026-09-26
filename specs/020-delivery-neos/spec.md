@@ -4,11 +4,15 @@
 
 **Created**: 2026-09-26
 
-**Status**: Implementada (2026-09-26). Gate técnico en verde: typecheck, lint,
-build y 793 unitarios. **Falta la verificación en vivo** — el arnés
-(`pnpm test:e2e:delivery`) está escrito pero no se ha corrido: la máquina de
-desarrollo no tiene base de datos ni app levantada. Por el Principio IX, no
-está Hecha hasta que ese arnés pase con la bandera encendida y apagada.
+**Status**: **Hecha y verificada en vivo (2026-09-26).** Gate técnico en verde
+(typecheck, lint, build, 794 unitarios) y arnés de comportamiento en verde en
+las dos configuraciones de la bandera: 55/55 con `DELIVERY=on` y 12/12 sin
+ella, contra la app viva con PostgreSQL en Docker y los mocks encendidos.
+
+La verificación en vivo encontró un fallo que ningún unitario podía ver: el
+`ON CONFLICT` de la creación de pedidos no inferia el índice único parcial sin
+repetir su predicado (Postgres 42P10), y eso rompía el camino de WhatsApp.
+Corregido. Es exactamente el motivo por el que el Principio IX existe.
 
 **Input**: Encargo de la agencia Neos (2026-09-26): adaptar Vocero para un
 negocio con entrega a domicilio, sin tocar el núcleo de los webhooks de

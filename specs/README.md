@@ -16,7 +16,7 @@ producto** — y saberlo antes de leerla ahorra una confusión.
 | `017-canal-messenger` | Ciclo completo | spec (sobre los cimientos de 014: mismo adaptador-por-canal y bandera) |
 | `018-anuncio-de-origen` | Ciclo completo | spec, plan, data-model, tasks (puerto de la spec 212 de Vocero Cloud; enmienda la captura de 016) |
 | `019-resultados` | Ligero | spec (puerto de la pantalla Resultados de Vocero Cloud, sin gasto publicitario ni migración) |
-| `020-delivery-neos` | Ciclo completo | spec, plan, research, data-model, 2 contratos, quickstart, checklist, tasks, verificacion (operación de delivery tras la bandera `DELIVERY`: KDS, motorizados y PIN de entrega por WhatsApp. **Implementada; falta el arnés en vivo — ver T050**) |
+| `020-delivery-neos` | Ciclo completo | spec, plan, research, data-model, 2 contratos, quickstart, checklist, tasks, verificacion (operación de delivery tras la bandera `DELIVERY`: KDS, motorizados y PIN de entrega por WhatsApp. **Hecha y verificada en vivo: 55/55 con la bandera, 12/12 sin ella**) |
 
 Los tres carriles —ciclo completo, ligero y exento— están definidos en el
 [Principio VI de la constitución](../.specify/memory/constitution.md). El

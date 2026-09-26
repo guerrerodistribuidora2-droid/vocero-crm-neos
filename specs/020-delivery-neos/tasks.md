@@ -164,36 +164,27 @@ sin esquema y sin bandera no hay nada que encender ni que probar.
 - [x] **T048** `scripts/e2e-delivery.mjs` y su entrada en el arnés.
 - [x] **T049** Gate técnico completo: `pnpm typecheck && pnpm lint && pnpm build
       && pnpm test`.
-- [ ] **T050** Arnés de comportamiento en verde en las **dos** configuraciones
-      de la bandera, encendida y apagada (FR-020). Sin esto la feature no está
-      Hecha.
+- [x] **T050** Arnés de comportamiento en verde en las **dos** configuraciones
+      de la bandera (FR-020). **HECHO — 2026-09-26.**
 
-      **PENDIENTE, y es lo único que falta.** El arnés está escrito y
-      registrado (`pnpm test:e2e:delivery`), pero NO se ha ejecutado nunca: la
-      máquina donde se desarrolló no tiene PostgreSQL, ni Docker, ni un `.env`,
-      así que no hay app viva contra la que correrlo. Lo verificado hasta aquí
-      es el gate técnico (typecheck, lint, build y 793 unitarios) más los
-      guardarraíles, que sí se probaron introduciendo a propósito la violación
-      que cada uno vigila.
-
-      Los pasos exactos, con las trampas de esta máquina, están en
-      [verificacion.md](./verificacion.md). En resumen: levantar Postgres con
-      `docker compose -f docker-compose.dev.yml up -d`, crear el `.env`,
-      migrar, levantar la app y correr el arnés **dos veces**, reiniciando el
-      servidor entre las dos para que el cambio de bandera surta efecto.
-
-      ```powershell
-      corepack pnpm test:e2e:delivery   # con DELIVERY=on en .env
-      corepack pnpm test:e2e:delivery   # sin la bandera: todo en 404
+      ```
+      DELIVERY=on   → 55/55 comprobaciones en verde
+      sin bandera   → 12/12 comprobaciones en verde
       ```
 
-      `corepack pnpm` y no `pnpm` a secas: en esta máquina pnpm no está
-      instalado como comando y `corepack enable` falla por permisos.
+      Corrido contra la app viva con PostgreSQL 16 en Docker y los mocks
+      encendidos. La corrida encontró **un fallo real que ningún unitario podía
+      ver**: el `ON CONFLICT` de la creación de pedidos no podía inferir el
+      índice único PARCIAL sin repetir su predicado, y Postgres respondía
+      42P10. Rompía el camino más usado, el de WhatsApp. Corregido en
+      `server/delivery/service.ts`.
 
-      Hasta entonces, por el Principio IX de la constitución, esta feature NO
-      puede declararse Hecha. Al cerrarla hay que actualizar tres sitios: esta
-      casilla, el encabezado de `spec.md` y
-      `memory/delivery-estado-de-la-feature.md`.
+      También se corrigieron dos errores del propio arnés: leía el tablero con
+      una forma que no existe (`columns[].leads[]` en vez de `leads[]`) y
+      consultaba el lead antes de que la bandeja lo creara. Y la sección del
+      sandbox se OMITÍA cuando la instancia no tenía conversación de prueba;
+      ahora la fabrica, y si no puede, falla en rojo en vez de saltarse la
+      comprobación del guardarraíl.
 
 ---
 

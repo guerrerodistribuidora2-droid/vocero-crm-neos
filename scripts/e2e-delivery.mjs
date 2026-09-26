@@ -109,6 +109,21 @@ async function pedido(id) {
   return (await api(`/api/delivery/orders/${id}`)).json;
 }
 
+/**
+ * El lead de un contacto, esperando a que exista.
+ *
+ * Dos cosas que se aprendieron corriendo esto de verdad: `/api/pipeline/board`
+ * devuelve `leads` en un arreglo PLANO (no columnas con leads dentro), y el
+ * lead lo crea la actividad de la bandeja DESPUÉS de ingerir el mensaje, así
+ * que consultarlo de inmediato es una carrera que se pierde.
+ */
+async function leadDe(n) {
+  return hasta(async () => {
+    const board = (await api("/api/pipeline/board")).json;
+    return (board?.leads ?? []).find((l) => l.contact?.name === nombre(n)) ?? null;
+  }, 15000);
+}
+
 /* ============================================================
  * A. Sin la bandera, el delivery no existe
  * ============================================================ */
@@ -145,18 +160,14 @@ async function superficieApagada() {
   const antes = await sql`select count(*)::int as n from delivery_order`;
   const stages = (await api("/api/pipeline/stages")).json?.stages ?? [];
   const destino = stages[1] ?? stages[0];
-  if (destino && conv) {
-    const board = (await api("/api/pipeline/board")).json;
-    const lead = (board?.columns ?? [])
-      .flatMap((c) => c.leads ?? [])
-      .find((l) => l.contact?.name === nombre(90));
-    if (lead) {
-      await api(`/api/pipeline/leads/${lead.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ stageId: destino.id }),
-      });
-    }
+  const lead = conv ? await leadDe(90) : null;
+  if (destino && lead) {
+    await api(`/api/pipeline/leads/${lead.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ stageId: destino.id }),
+    });
   }
+  ok("el lead existe y se pudo mover", !!lead);
   await sleep(600);
   const despues = await sql`select count(*)::int as n from delivery_order`;
   ok(
@@ -445,11 +456,8 @@ async function guionCompleto() {
   });
 
   await entra(3, `Tercero ${RUN}`);
-  const conv3 = await conversacionDe(3);
-  const board = (await api("/api/pipeline/board")).json;
-  const lead3 = (board?.columns ?? [])
-    .flatMap((c) => c.leads ?? [])
-    .find((l) => l.contact?.name === nombre(3));
+  await conversacionDe(3);
+  const lead3 = await leadDe(3);
   ok("el lead del tercero existe", !!lead3);
 
   if (lead3) {
@@ -501,11 +509,43 @@ async function guionCompleto() {
 
   console.log("== J. Sandbox del Laboratorio ==");
 
-  if (conv3) {
+  {
     const antesLab = (await pinDelMock()).count;
-    const [testConv] = await sql`
+
+    /**
+     * La conversación de prueba se fabrica aquí si no existe.
+     *
+     * Antes esta sección se OMITÍA cuando la instancia no tenía ninguna, y
+     * omitirla es lo peor que podía pasar: es la que comprueba el guardarraíl
+     * del Laboratorio, o sea que un pedido de prueba jamás manda un mensaje
+     * real. Una comprobación que se salta sola no protege nada.
+     *
+     * Se toca la base directo, como hace e2e-resultados, solo para lo que el
+     * webhook no puede fabricar: una conversación marcada `is_test`.
+     */
+    const [org] = await sql`select id from organization limit 1`;
+    let [testConv] = await sql`
       select id, contact_id from conversation where is_test = true limit 1
     `;
+    if (!testConv && org) {
+      const ctId = `ct_lab${RUN}`;
+      const cvId = `cv_lab${RUN}`;
+      await sql`
+        insert into contact (id, organization_id, wa_identity, phone, name)
+        values (${ctId}, ${org.id}, ${`lab-${RUN}`}, ${tel(99)}, ${`Lab ${RUN}`})
+        on conflict do nothing
+      `;
+      await sql`
+        insert into conversation (id, organization_id, contact_id, is_test, channel)
+        values (${cvId}, ${org.id}, ${ctId}, true, 'whatsapp')
+        on conflict do nothing
+      `;
+      [testConv] = await sql`
+        select id, contact_id from conversation where id = ${cvId}
+      `;
+      ok("conversación de prueba fabricada para el guardarraíl", !!testConv);
+    }
+
     if (testConv) {
       const labOrder = await api("/api/delivery/orders", {
         method: "POST",
@@ -553,7 +593,9 @@ async function guionCompleto() {
         );
       }
     } else {
-      console.log("  (sin conversación de prueba en la instancia: se omite)");
+      // No se omite en silencio: si no hubo con qué probar el guardarraíl,
+      // esta corrida NO verificó el sandbox y tiene que decirlo en rojo.
+      ok("hubo conversación de prueba con la que verificar el sandbox", false);
     }
   }
 }
