@@ -47,16 +47,46 @@ const agendaActions = [
   }),
 ] as const;
 
+/**
+ * 020 — La acción de delivery. Solo se registra si esta instancia encendió la
+ * bandera: donde no hay delivery, el modelo ni siquiera puede nombrarla.
+ *
+ * No lleva monto a propósito. Vocero no tiene catálogo de productos (Principio
+ * VIII), así que cualquier precio que el modelo escribiera sería inventado, y
+ * un precio inventado en un pedido real es peor que ningún precio: el operador
+ * confiaría en él. El monto lo captura una persona.
+ */
+const deliveryActions = [
+  z.object({
+    action: z.literal("create_order"),
+    items: z.string().min(1),
+    address: z.string().optional(),
+    notes: z.string().optional(),
+    reply: z.string().optional(),
+  }),
+] as const;
+
 export const AgentAction = z.discriminatedUnion("action", [
   ...baseActions,
   ...agendaActions,
+  ...deliveryActions,
 ]);
 
-/** El esquema que se le exige al modelo en ESTE turno. */
-export function agentActionSchema(agenda: boolean) {
-  return agenda
-    ? AgentAction
-    : z.discriminatedUnion("action", [...baseActions]);
+/**
+ * El esquema que se le exige al modelo en ESTE turno.
+ *
+ * `delivery` es opcional para no romper a quien ya llamaba con un solo
+ * argumento, y su valor por defecto es apagado, que es el estado seguro.
+ */
+export function agentActionSchema(agenda: boolean, delivery = false) {
+  if (agenda && delivery) return AgentAction;
+  if (agenda) {
+    return z.discriminatedUnion("action", [...baseActions, ...agendaActions]);
+  }
+  if (delivery) {
+    return z.discriminatedUnion("action", [...baseActions, ...deliveryActions]);
+  }
+  return z.discriminatedUnion("action", [...baseActions]);
 }
 
 export type AgentActionType = z.infer<typeof AgentAction>;
@@ -80,7 +110,8 @@ export function degradeAction(action: AgentActionType): AgentActionType {
   if (
     action.action === "move_stage" ||
     action.action === "offer_slots" ||
-    action.action === "book_slot"
+    action.action === "book_slot" ||
+    action.action === "create_order"
   ) {
     return action.reply
       ? { action: "reply", text: action.reply }

@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  Bike,
   CalendarDays,
   ChartColumn,
+  ChefHat,
   FlaskConical,
   Inbox,
   Kanban,
@@ -57,6 +59,18 @@ const AGENDA_ITEM: NavItem = {
 };
 
 /**
+ * 020 — "Cocina" y "Delivery" solo existen si esta instancia encendió el
+ * delivery. Van juntas y ARRIBA del todo, antes de la Bandeja: en un negocio
+ * que entrega a domicilio, lo que hay en la cola ahora mismo importa más que
+ * lo que alguien escribió hace un rato, y quien mira el panel de cocina no
+ * mira nada más en todo el turno.
+ */
+const DELIVERY_ITEMS: NavItem[] = [
+  { href: "/kds", label: "Cocina", icon: ChefHat },
+  { href: "/delivery", label: "Delivery", icon: Bike },
+];
+
+/**
  * Un renglón del menú, como el `side-item` del mockup de la landing: texto
  * semibold, esquinas de 9px y, activo, lavado del acento con tinta azul.
  * Exportado para la vista previa de Configuración → Marca, que pinta la barra.
@@ -80,6 +94,7 @@ export function AppNav({
   theme,
   commit,
   agenda = false,
+  delivery = false,
   open = false,
   onClose,
 }: {
@@ -99,6 +114,12 @@ export function AppNav({
    * todavía debe ver la entrada igual.
    */
   agenda?: boolean;
+  /**
+   * 020 — ¿esta instancia entrega a domicilio? Igual que la agenda: lo decide
+   * el servidor y baja por prop. Este componente es de cliente y no puede
+   * —ni debe— leer variables de entorno.
+   */
+  delivery?: boolean;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
   onClose?: () => void;
@@ -129,9 +150,11 @@ export function AppNav({
   const settingsActive = pathname.startsWith("/settings");
   // Citas va después de Pipeline: es el paso siguiente de un trato, no una
   // sección aparte.
-  const items = agenda
+  const conAgenda = agenda
     ? [...NAV.slice(0, 2), AGENDA_ITEM, ...NAV.slice(2)]
     : NAV;
+  // 020 — La operación del día va primero. Ver DELIVERY_ITEMS.
+  const items = delivery ? [...DELIVERY_ITEMS, ...conAgenda] : conAgenda;
 
   return (
     <aside

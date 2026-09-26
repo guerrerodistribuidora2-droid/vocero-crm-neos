@@ -31,6 +31,12 @@ export function buildAgentSystemPrompt(input: {
    * token en hablar de horarios: la agenda no existe aquí.
    */
   agenda?: boolean;
+  /**
+   * 020 — ¿esta instancia entrega a domicilio? Apagada, el prompt no menciona
+   * pedidos: el delivery no existe aquí, y explicarle una acción que no puede
+   * ejecutar solo consigue que la intente y se degrade.
+   */
+  delivery?: boolean;
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
@@ -45,6 +51,19 @@ export function buildAgentSystemPrompt(input: {
         "- NUNCA escribas tú los horarios ni los inventes: usa offer_slots y el sistema pega los reales.",
         "- book_slot solo acepta un horario que el sistema ofreció antes en ESTA conversación. Si el cliente pide otro, vuelve a ofrecer con offer_slots.",
         "- Si el cliente quiere CANCELAR una cita → handoff: esa decisión no es tuya.",
+      ]
+    : [];
+  const deliveryLines = input.delivery
+    ? [
+        '- {"action":"create_order","items":"<lo que pidió, tal como lo dijo>","address":"<dirección de entrega>","notes":"<indicaciones>","reply":"..."} — registrar el pedido para que entre a cocina (address, notes y reply son opcionales).',
+      ]
+    : [];
+  const deliveryRules = input.delivery
+    ? [
+        "- create_order SOLO cuando el cliente ya confirmó qué quiere. Si todavía está preguntando, responde con reply.",
+        "- NUNCA inventes precios ni totales: no los sabes. Si el cliente pregunta cuánto es y no está en el conocimiento, dilo y escala.",
+        "- Si falta la dirección, pídela con reply ANTES de registrar el pedido.",
+        "- Un pedido ya registrado no se modifica ni se cancela desde aquí → handoff.",
       ]
     : [];
   return [
@@ -65,11 +84,13 @@ export function buildAgentSystemPrompt(input: {
       '- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).',
       '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano (farewell opcional para despedirte).',
       ...agendaLines,
+      ...deliveryLines,
       "Reglas duras:",
       "- Si el cliente pide hablar con una persona/humano/asesor → handoff.",
       "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
       "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",
       ...agendaRules,
+      ...deliveryRules,
       "- JSON puro, sin markdown ni texto adicional.",
     ].join("\n"),
   ]

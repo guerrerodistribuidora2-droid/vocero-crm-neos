@@ -20,6 +20,10 @@ export type EventHandlers = {
   }) => void;
   /** 015 — Algo cambió en la agenda (también cuando agenda la IA). */
   onBookingUpdated?: (data: { bookingId: string }) => void;
+  /** 020 — Algo cambió en un pedido: los paneles se refrescan solos. */
+  onDeliveryOrderUpdated?: (data: { orderId: string }) => void;
+  /** 020 — Alta, baja o disponibilidad de un motorizado. */
+  onDeliveryCourierUpdated?: (data: { courierId: string }) => void;
   /** Se llama tras RECONECTAR (no en la conexión inicial): catch-up con refetch. */
   onReconnect?: () => void;
 };
@@ -57,6 +61,12 @@ export function useEvents(handlers: EventHandlers): void {
     listen("lab.run", (d) => handlersRef.current.onLabRun?.(d as never));
     listen("booking.updated", (d) =>
       handlersRef.current.onBookingUpdated?.(d as never)
+    );
+    listen("delivery.order.updated", (d) =>
+      handlersRef.current.onDeliveryOrderUpdated?.(d as never)
+    );
+    listen("delivery.courier.updated", (d) =>
+      handlersRef.current.onDeliveryCourierUpdated?.(d as never)
     );
 
     source.onerror = () => {

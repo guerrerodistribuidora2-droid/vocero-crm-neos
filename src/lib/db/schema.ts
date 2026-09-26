@@ -1058,3 +1058,260 @@ export const capiSettings = pgTable(
   },
   (t) => [uniqueIndex("capi_settings_org_uq").on(t.organizationId)]
 );
+
+/* ============================================================
+ * 020 — Operación de delivery: cocina, motorizados y PIN de entrega
+ * (detrás de la bandera DELIVERY)
+ * ============================================================ */
+
+/**
+ * Quién reparte. NO es un usuario del sistema: no tiene cuenta, no inicia
+ * sesión y no tiene rol (research D12). Darle cuenta a cada repartidor
+ * arrastraría invitaciones, permisos por pantalla y una superficie de
+ * autenticación nueva; en esta versión el despachador opera el panel. Si luego
+ * hace falta que entre solo, el registro ya existe y se le cuelga una cuenta
+ * encima sin migrar nada.
+ */
+export const courier = pgTable(
+  "courier",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Para llamarlo, no para autenticarlo. */
+    phone: text("phone"),
+    /** Filtra el selector de asignación: un motorizado ocupado no aparece. */
+    available: boolean("available").notNull().default(true),
+    /**
+     * Baja lógica. Dar de baja NO borra: hay pedidos históricos que nombran a
+     * este motorizado y la bitácora de entregas no se toca jamás.
+     */
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("courier_org_active_idx").on(t.organizationId, t.active, t.available),
+  ]
+);
+
+/**
+ * El pedido. UNA sola cola con columna de origen, no dos tablas (research D2):
+ * una vez creado, un pedido nacido en la conversación y uno nacido en el
+ * tablero se cocinan y se entregan idénticamente, así que el origen es un
+ * atributo y no una naturaleza. La cocina ve una sola lista.
+ *
+ * Sobre el PIN de entrega, la regla que da sentido a toda la feature: el
+ * código EN CLARO no vive aquí ni en ninguna otra parte (research D4). De él
+ * quedan dos representaciones con dos propósitos que nunca se cruzan —
+ * `pinHash` para verificar, `pinSealed` para reenviar. Si algún día aparece
+ * una columna con el código legible, la feature dejó de probar nada.
+ */
+export const deliveryOrder = pgTable(
+  "delivery_order",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** Siempre hay alguien que recibe. */
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => contact.id, { onDelete: "cascade" }),
+    /**
+     * Por dónde viaja el PIN. NULL en un pedido de pipeline de quien nunca
+     * escribió: sin hilo no hay por dónde mandarlo, y eso es una CONDICIÓN
+     * (`pinStatus = "no_enviable"`), no un error.
+     */
+    conversationId: text("conversation_id").references(() => conversation.id, {
+      onDelete: "set null",
+    }),
+    /** NULL en un pedido que nació en la conversación. */
+    leadId: text("lead_id").references(() => lead.id, { onDelete: "set null" }),
+    source: text("source", { enum: ["whatsapp", "pipeline"] }).notNull(),
+    /**
+     * El evento de etapa que lo creó. Es lo que vuelve IDEMPOTENTE la entrada
+     * desde el pipeline: el UNIQUE parcial de abajo es la garantía, no un
+     * "consulta y luego inserta" que dos movimientos simultáneos ganarían los
+     * dos. Por evento y no por lead, para que un cliente recurrente pueda
+     * volver a pedir.
+     */
+    sourceEventId: text("source_event_id").references(() => leadStageEvent.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Los estados solo AVANZAN en el orden de este enum (research D3). El
+     * servicio valida por posición, así que el retroceso se rechaza sin casos
+     * especiales. `cancelado` es terminal y se alcanza desde cualquier estado
+     * no terminal.
+     */
+    state: text("state", {
+      enum: [
+        "recibido",
+        "en_cocina",
+        "listo",
+        "asignado",
+        "en_camino",
+        "entregado",
+        "cancelado",
+      ],
+    })
+      .notNull()
+      .default("recibido"),
+    /** Las líneas del pedido como texto: no hay catálogo (Principio VIII). */
+    items: text("items").notNull(),
+    address: text("address"),
+    notes: text("notes"),
+    /**
+     * Monto total en CENTAVOS ENTEROS, misma convención que el lead. NULL =
+     * nadie lo capturó, que no es lo mismo que cero.
+     */
+    amountCents: integer("amount_cents"),
+    currency: text("currency"),
+    courierId: text("courier_id").references(() => courier.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * HMAC-SHA256 del código, con clave derivada de ENCRYPTION_KEY. Lo ÚNICO
+     * que lee la verificación. Un hash sin clave no serviría: seis dígitos son
+     * un millón de combinaciones y una tabla precalculada los rompe en
+     * segundos.
+     */
+    pinHash: text("pin_hash"),
+    /**
+     * El código cifrado (AES-256-GCM, `lib/crypto`), lo ÚNICO que lee el
+     * reenvío. Existe porque reenviar tiene que mandar el MISMO código: uno
+     * nuevo deja al cliente con un código muerto en la mano y al motorizado
+     * discutiendo en la puerta. La verificación jamás lo toca, así que aunque
+     * se comprometiera no se puede cerrar una entrega con él. Se BORRA al
+     * llegar el pedido a un estado terminal.
+     */
+    pinSealed: text("pin_sealed"),
+    /**
+     * Cómo fue el envío. Se escribe DESPUÉS de la transacción de estado: el
+     * pedido avanza a `en_camino` pase lo que pase con Meta (research D8). Un
+     * motorizado parado en la puerta por un hipo del proveedor es exactamente
+     * el fallo que esta separación existe para evitar.
+     */
+    pinStatus: text("pin_status", {
+      enum: ["pendiente", "enviado", "fallido", "no_enviable"],
+    }),
+    /** Por qué no salió, en palabras que el operador entiende. */
+    pinError: text("pin_error"),
+    /** El mensaje del CRM que lo llevó, para poder mirarlo en el hilo. */
+    pinMessageId: text("pin_message_id").references(() => message.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Intentos fallidos de verificación. El tope existe porque sin él un
+     * código de seis dígitos se adivina a fuerza de reintentos.
+     */
+    pinAttempts: integer("pin_attempts").notNull().default(0),
+    /** Conversación del Laboratorio: jamás dispara un envío real. */
+    isTest: boolean("is_test").notNull().default(false),
+    /** El reloj que la cocina ve. */
+    placedAt: timestamp("placed_at").notNull().defaultNow(),
+    /** Se llena una sola vez, al cerrar la entrega. */
+    deliveredAt: timestamp("delivered_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("delivery_order_org_state_idx").on(
+      t.organizationId,
+      t.state,
+      t.placedAt
+    ),
+    index("delivery_order_org_courier_idx").on(t.organizationId, t.courierId),
+    /**
+     * La idempotencia de la entrada desde el pipeline ES este índice. Parcial
+     * porque un pedido de WhatsApp no tiene evento de etapa, y NULL no
+     * colisiona consigo mismo en el resto de las filas.
+     */
+    uniqueIndex("delivery_order_source_event_uq")
+      .on(t.sourceEventId)
+      .where(sql`${t.sourceEventId} is not null`),
+  ]
+);
+
+/**
+ * Bitácora de la operación: append-only. Nada se actualiza ni se borra;
+ * corregir un dato es agregar un renglón nuevo.
+ *
+ * El repo ya tomó esta decisión una vez, para `lead_stage_event`, con el mismo
+ * motivo: un camino que mueva el pedido sin registrar el evento no truena,
+ * solo hace que el historial mienta meses después. Aquí el problema es peor,
+ * porque esta tabla ES la prueba de entrega: un hueco vale lo mismo que no
+ * tener nada.
+ *
+ * Regla dura: la ÚNICA puerta que escribe aquí —y que escribe
+ * `delivery_order.state`— es `src/server/delivery/service.ts`. Un unit test de
+ * vigilancia falla si aparece otra escritura.
+ */
+export const deliveryEvent = pgTable(
+  "delivery_event",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => deliveryOrder.id, { onDelete: "cascade" }),
+    /** NULL en el renglón de creación: antes no había estado. */
+    fromState: text("from_state"),
+    toState: text("to_state").notNull(),
+    actor: text("actor", {
+      enum: ["agent", "operator", "system", "courier"],
+    }).notNull(),
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    courierId: text("courier_id").references(() => courier.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Motivo, error del envío, o la nota del cierre SIN código. Esto último es
+     * deliberado: una entrega cerrada a mano tiene que verse distinta de una
+     * probada con el PIN, y el propósito de la bitácora es poder distinguirlas
+     * seis meses después.
+     */
+    detail: text("detail"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("delivery_event_order_idx").on(t.orderId, t.createdAt)]
+);
+
+/** La configuración de delivery del negocio. Una fila por organización. */
+export const deliverySettings = pgTable(
+  "delivery_settings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /**
+     * Qué etapa del pipeline dispara pedido. NULL = ese camino está apagado y
+     * el pipeline opera intacto. `set null` a propósito: borrar la etapa apaga
+     * la entrada automática, no rompe la configuración.
+     */
+    orderStageId: text("order_stage_id").references(() => pipelineStage.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * La plantilla aprobada que lleva el código cuando la ventana de servicio
+     * de 24h está CERRADA. No es una preferencia: es la regla de Meta. NULL =
+     * fuera de la ventana el código no sale, y el pedido lo dice en vez de
+     * fingir que salió.
+     */
+    pinTemplateId: text("pin_template_id").references(() => template.id, {
+      onDelete: "set null",
+    }),
+    pinLength: integer("pin_length").notNull().default(6),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("delivery_settings_org_uq").on(t.organizationId)]
+);

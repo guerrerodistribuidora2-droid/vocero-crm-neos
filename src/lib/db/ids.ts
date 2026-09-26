@@ -29,6 +29,11 @@ const prefixes = {
   adAttribution: "att",
   conversionEvent: "cve",
   capiSettings: "capi",
+  // 020 — operación de delivery
+  deliveryOrder: "ord",
+  courier: "cou",
+  deliveryEvent: "doe",
+  deliverySettings: "dset",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

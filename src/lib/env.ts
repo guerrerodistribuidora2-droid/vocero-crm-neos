@@ -38,6 +38,11 @@ const envSchema = z.object({
   // conversacion, no se le reporta nada a Meta y la superficie da 404.
   // Ej.: ATRIBUCION=on
   ATRIBUCION: z.string().optional(),
+  // 020: operacion de delivery (cocina, motorizados y PIN de entrega por
+  // WhatsApp). Apagada por defecto: sin ella no existen los paneles, la
+  // superficie da 404, el agente no puede crear pedidos y el pipeline no
+  // dispara ninguno. Ej.: DELIVERY=on
+  DELIVERY: z.string().optional(),
   // 015: bases de los conectores. Solo se sobreescriben para apuntar a los
   // mocks en el self-test; en producción se usan las reales.
   ZOOM_BASE_URL: z.string().url().default("https://api.zoom.us/v2"),

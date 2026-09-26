@@ -4,6 +4,8 @@ import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import type { LossReason, StageChangeSource } from "@/lib/types";
 import { reportStageChange } from "@/server/attribution/conversions";
+import { deliveryEnabled } from "@/server/delivery/flag";
+import { createOrderFromStageEvent } from "@/server/delivery/orders";
 
 /**
  * La ÚNICA puerta que escribe `lead.stage_id`.
@@ -59,6 +61,14 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
   // llamada de red dentro de la transacción la mantendría abierta mientras
   // Meta piensa, y una conversión jamás vale una transacción larga.
   let toStageKind: "open" | "won" | "lost" | null = null;
+
+  /**
+   * 020: el identificador del evento de etapa, capturado ANTES de insertarlo
+   * para poder usarlo fuera de la transacción. Es la llave de idempotencia del
+   * pedido que se crea desde el pipeline: por EVENTO y no por lead, para que
+   * un cliente recurrente pueda volver a pedir.
+   */
+  let stageEventId: string | null = null;
 
   const result = await db.transaction(async (tx) => {
     const leadRows = await tx
@@ -125,8 +135,9 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
     if (!leadRow) return { ok: false as const, reason: "lead_not_found" as const };
 
     if (changed) {
+      stageEventId = newId("leadStageEvent");
       await tx.insert(schema.leadStageEvent).values({
-        id: newId("leadStageEvent"),
+        id: stageEventId,
         organizationId: input.organizationId,
         leadId: leadRow.id,
         contactId: leadRow.contactId,
@@ -159,6 +170,33 @@ export async function moveLeadToStage(input: MoveInput): Promise<MoveResult> {
       toStageId: result.lead.stageId,
       toStageKind,
     });
+  }
+
+  /**
+   * 020 — Si esta instancia tiene delivery encendido y el lead entró a la
+   * etapa que el negocio marcó como disparadora, el pedido entra a la cocina.
+   *
+   * Cuelga de aquí, y no de cada ruta que mueve leads, por el mismo motivo por
+   * el que cuelga la bitácora: esta es la ÚNICA puerta por la que pasa todo
+   * movimiento de etapa, así que enganchar aquí garantiza que no exista un
+   * camino que mueva el lead sin pasar por la regla.
+   *
+   * Best-effort y fuera de la transacción, igual que el reporte a Meta: el
+   * lead ya está movido y en firme, y un fallo creando el pedido jamás puede
+   * costar ese movimiento. El operador lo crea a mano y se acabó.
+   */
+  if (result.ok && result.changed && stageEventId && deliveryEnabled()) {
+    try {
+      await createOrderFromStageEvent({
+        organizationId: input.organizationId,
+        stageEventId,
+        leadId: result.lead.id,
+        contactId: result.lead.contactId,
+        toStageId: result.lead.stageId,
+      });
+    } catch (err) {
+      console.error(`[delivery] no se pudo crear el pedido del pipeline: ${err}`);
+    }
   }
 
   return result;

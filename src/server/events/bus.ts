@@ -29,7 +29,17 @@ export type SseEvent =
         progress: { done: number; total: number };
         score?: number | null;
       };
-    };
+    }
+  /**
+   * 020 — algo cambió en un pedido: el panel de Cocina y el de Delivery se
+   * refrescan solos. Viaja SOLO el identificador, igual que `booking.updated`:
+   * la pantalla hace refetch. Mandar el pedido entero obligaría a resolver el
+   * ámbito del tenant en cada publicación y a mantener esa forma sincronizada
+   * con la de la API, que son dos sitios donde la verdad se puede separar.
+   */
+  | { type: "delivery.order.updated"; data: { orderId: string } }
+  /** 020 — alta, baja o cambio de disponibilidad de un motorizado. */
+  | { type: "delivery.courier.updated"; data: { courierId: string } };
 
 const globalForBus = globalThis as unknown as { __voceroBus?: EventEmitter };
 

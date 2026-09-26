@@ -296,6 +296,17 @@ export async function sendText(input: {
   organizationId: string;
   text: string;
   aiGenerated?: boolean;
+  /**
+   * 020 — Qué se GUARDA en el hilo, cuando debe diferir de lo que se ENVÍA.
+   * Por defecto se guarda lo enviado, que es lo correcto para todo mensaje
+   * normal; no lo uses para nada que no lo necesite de verdad.
+   *
+   * Existe por el código de entrega: el cliente tiene que recibirlo, pero
+   * guardarlo legible en la bandeja dejaría que cualquier operador lo leyera,
+   * y un código que el operador puede leer no prueba que el cliente recibió su
+   * pedido. Se envía completo y se guarda enmascarado.
+   */
+  persistAs?: string;
 }): Promise<SendResult> {
   const target = await prepareSend(input.conversationId, input.organizationId);
   const { credentials } = target;
@@ -316,7 +327,7 @@ export async function sendText(input: {
     conversationId: input.conversationId,
     waMessageId,
     type: "text",
-    text: input.text,
+    text: input.persistAs ?? input.text,
     // Un canal sin acuses de entrega confirma al aceptar; uno con acuses
     // avanza despues por webhook. Sin esta distincion el mensaje se queda
     // con el reloj puesto para siempre.

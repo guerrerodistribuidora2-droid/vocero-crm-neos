@@ -28,6 +28,7 @@ export function AppShell({
   theme,
   commit,
   agenda = false,
+  delivery = false,
   children,
 }: {
   branding: Branding;
@@ -38,6 +39,8 @@ export function AppShell({
   commit?: ResolvedCommit;
   /** 015 — ¿esta instancia tiene agenda? Lo decide el servidor. */
   agenda?: boolean;
+  /** 020 — ¿esta instancia entrega a domicilio? Lo decide el servidor. */
+  delivery?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -76,6 +79,7 @@ export function AppShell({
         role={role}
         theme={theme}
         agenda={agenda}
+        delivery={delivery}
         open={navOpen}
         onClose={() => setNavOpen(false)}
       />

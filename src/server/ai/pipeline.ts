@@ -19,6 +19,8 @@ import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { agendaEnabled } from "@/server/agenda/flag";
 import { bookSlot, offerSlots } from "@/server/agenda/agent";
 import { getOffers, mapaDeHuecosParaModelo } from "@/server/agenda/offers";
+import { deliveryEnabled } from "@/server/delivery/flag";
+import { createOrderFromConversation } from "@/server/delivery/orders";
 
 /**
  * Turno del agente (FR-021..FR-025).
@@ -156,6 +158,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .orderBy(asc(schema.pipelineStage.position));
 
   const agenda = agendaEnabled();
+  const delivery = deliveryEnabled();
 
   /**
    * 015 — Los huecos vigentes, con su instante exacto.
@@ -183,7 +186,13 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: buildAgentSystemPrompt({ profile, kb, stages, agenda }),
+      content: buildAgentSystemPrompt({
+        profile,
+        kb,
+        stages,
+        agenda,
+        delivery,
+      }),
     },
     ...history
       .filter((m) => m.text)
@@ -200,7 +209,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       : []),
   ];
 
-  const result = await chatJson(agentActionSchema(agenda), messages);
+  const result = await chatJson(agentActionSchema(agenda, delivery), messages);
   if (!result.ok) {
     if (result.error === "not_configured") return;
     // Fallo persistente del proveedor o salida imposible → escalar (FR-022).
@@ -241,6 +250,36 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         return;
       } catch (err) {
         console.error(`[agente] el motor de agenda falló: ${err}`);
+        action = degradeAction(action);
+      }
+    }
+  }
+
+  // 020 — Delivery. Mismo trato que la agenda: un fallo al registrar el pedido
+  // degrada el turno (el agente responde sin pedido) en vez de tumbarlo.
+  // Quedarse callado con un cliente que acaba de pedir es peor que perder el
+  // registro automático, que un operador puede rehacer a mano.
+  if (action.action === "create_order") {
+    if (!delivery) {
+      action = degradeAction(action);
+    } else {
+      try {
+        const res = await createOrderFromConversation({
+          organizationId,
+          conversationId,
+          items: action.items,
+          address: action.address ?? null,
+          notes: action.notes ?? null,
+        });
+        if (!res.ok) throw new Error(res.reason);
+        if (action.reply) await deliverReply(conversation, action.reply);
+        publish(organizationId, {
+          type: "conversation.updated",
+          data: { conversation: { id: conversationId } },
+        });
+        return;
+      } catch (err) {
+        console.error(`[agente] no se pudo registrar el pedido: ${err}`);
         action = degradeAction(action);
       }
     }

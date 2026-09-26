@@ -276,6 +276,13 @@ export async function sendTemplate(input: {
   conversationId: string;
   templateId: string;
   variables?: string[];
+  /**
+   * 020 — Qué se GUARDA en el hilo, cuando debe diferir de lo que se ENVÍA.
+   * Por defecto se guarda el cuerpo renderado con sus variables reales. El
+   * porqué está en `sendText`: lo usa el código de entrega para no dejarlo
+   * legible en la bandeja, donde cualquier operador podría leerlo.
+   */
+  persistAs?: string;
 }): Promise<{ messageId: string }> {
   const db = getDb();
 
@@ -386,7 +393,7 @@ export async function sendTemplate(input: {
       waMessageId,
       direction: "out",
       type: "template",
-      text: renderBody(template.body, values),
+      text: input.persistAs ?? renderBody(template.body, values),
       status: "pending",
       origin: "template",
     })
