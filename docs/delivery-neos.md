@@ -72,6 +72,76 @@ ni contraseña: no entran al sistema, los gestiona quien despacha.
 Un pedido listo se asigna a un motorizado libre. Cuando sale, lo marcas como en
 camino, y ahí ocurre lo importante.
 
+## El panel del repartidor
+
+Cada motorizado tiene su propia pantalla, pensada para un teléfono y para usarse
+con una mano en la calle.
+
+### Cómo entra: por enlace, sin cuenta
+
+No le creas un usuario ni le das contraseña. En la pantalla de Delivery, cada
+motorizado tiene un botón para **emitir su enlace de acceso**. Se lo mandas una
+vez, él lo guarda en su teléfono, y con eso entra.
+
+Tres cosas que conviene saber del enlace:
+
+- **Solo se muestra una vez.** El CRM guarda una huella, no el enlace, así que
+  ni el sistema puede volver a mostrarlo. Si se pierde, lo reemites.
+- **Reemitir invalida el anterior.** Es también la forma de revocarlo cuando
+  alguien deja el puesto. Hay además un botón de revocar.
+- **Quien tenga el enlace es el repartidor.** No lo pongas en un grupo. Si un
+  motorizado cambia de teléfono, reemite.
+
+### Qué ve
+
+Si no tiene pedido, una pantalla que dice que está esperando. Nada más.
+
+Si tiene pedido: el número corto, el nombre del cliente, qué lleva, la dirección
+con botones directos a Google Maps y a Waze, el monto a cobrar y el método de
+pago. Si es efectivo, se lo recuerda para que lleve cambio.
+
+No ve la cola del local, ni los demás repartidores, ni los montos del día. El
+enlace puede acabar en el teléfono de cualquiera, así que esa pantalla solo
+muestra lo que hace falta para llegar y cobrar.
+
+### Los botones
+
+Uno por vez, el siguiente paso y nada más. Primero **retiré el pedido, voy en
+camino**. Después, en la calle, el cuadro para teclear el código del cliente y
+**pedido entregado**.
+
+Entregar exige el código a propósito. Retirar y salir son actos del repartidor;
+cerrar la entrega es un acto del cliente, que entrega el código. Si fuera un
+botón más, la entrega quedaría cerrada con la palabra del repartidor.
+
+Al cerrar, el motorizado queda libre de inmediato para el siguiente servicio.
+
+## Asignación automática
+
+Cuando cocina marca un pedido como listo, el sistema busca solo al repartidor
+libre que lleva más tiempo esperando y se lo asigna.
+
+Si no hay nadie libre, el pedido se queda en listo, esperando. No es un error:
+es lo que pasa en un local cuando todos están en la calle. En cuanto alguien
+cierra una entrega, el despachador puede asignarle ese pedido desde el panel.
+
+La asignación a mano sigue funcionando. El reparto automático solo actúa cuando
+nadie lo asignó todavía, así que un despachador puede adelantarse siempre.
+
+**Dos pedidos listos al mismo tiempo nunca caen en el mismo repartidor.** El
+sistema reclama al motorizado con una operación que solo uno puede ganar; el
+segundo pedido pasa al siguiente candidato o se queda esperando.
+
+## Sin mensajes hacia tus repartidores
+
+El motorizado se entera por su panel, que se actualiza solo. No se le manda
+ningún WhatsApp.
+
+Es deliberado y es dinero: avisar a cada repartidor por WhatsApp en cada pedido
+gastaría tu cuota en mensajería interna. El único mensaje que sale de tu número
+sigue siendo el código de recepción al cliente, y ese es el que hace que la
+entrega quede probada.
+
 ## El código de entrega
 
 Al marcar el pedido como en camino, el sistema genera un código y **se lo manda

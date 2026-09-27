@@ -3,6 +3,11 @@ import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { publish } from "@/server/events/bus";
+import {
+  driverPath,
+  generateDriverToken,
+  hashDriverToken,
+} from "./driver-token";
 
 /**
  * 020 — Motorizados. Un registro de dominio, NO un usuario del sistema
@@ -96,6 +101,80 @@ export async function updateCourier(input: {
     data: { courierId: courier.id },
   });
   return courier;
+}
+
+/**
+ * Emite un enlace de acceso para el repartidor y devuelve el token EN CLARO.
+ *
+ * Es la única vez que el token existe fuera del teléfono del repartidor: en la
+ * base solo queda su huella, así que ni el servidor puede volver a mostrarlo.
+ * Si se pierde, se reemite — y reemitir invalida el anterior, porque la columna
+ * se sobreescribe. Eso es también la revocación cuando alguien deja el puesto.
+ */
+export async function issueAccessLink(input: {
+  organizationId: string;
+  courierId: string;
+}): Promise<{ token: string; path: string } | null> {
+  const db = getDb();
+  const token = generateDriverToken();
+
+  const updated = await db
+    .update(schema.courier)
+    .set({
+      accessTokenHash: hashDriverToken(token),
+      accessTokenIssuedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      scoped(
+        schema.courier.organizationId,
+        input.organizationId,
+        and(
+          eq(schema.courier.id, input.courierId),
+          eq(schema.courier.active, true)
+        )
+      )
+    )
+    .returning();
+
+  if (!updated[0]) return null;
+
+  publish(input.organizationId, {
+    type: "delivery.courier.updated",
+    data: { courierId: input.courierId },
+  });
+
+  return { token, path: driverPath(token) };
+}
+
+/** Revoca el enlace. El repartidor deja de poder entrar de inmediato. */
+export async function revokeAccessLink(input: {
+  organizationId: string;
+  courierId: string;
+}): Promise<boolean> {
+  const updated = await getDb()
+    .update(schema.courier)
+    .set({
+      accessTokenHash: null,
+      accessTokenIssuedAt: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      scoped(
+        schema.courier.organizationId,
+        input.organizationId,
+        eq(schema.courier.id, input.courierId)
+      )
+    )
+    .returning();
+
+  if (!updated[0]) return false;
+
+  publish(input.organizationId, {
+    type: "delivery.courier.updated",
+    data: { courierId: input.courierId },
+  });
+  return true;
 }
 
 /** Mapa de motorizados por id, para pintar el nombre en cada pedido. */

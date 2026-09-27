@@ -285,7 +285,28 @@ export async function transitionOrder(
       if (!courier.available) {
         return { ok: false as const, reason: "courier_unavailable" as const };
       }
+      // Ocupado con OTRO pedido: no se le puede encimar un segundo. La
+      // asignación automática ya reclamó al suyo con un UPDATE condicionado, y
+      // aquí el valor coincide, así que este camino solo frena a quien intente
+      // asignar a mano a alguien que ya salió.
+      if (courier.currentOrderId && courier.currentOrderId !== order.id) {
+        return { ok: false as const, reason: "courier_unavailable" as const };
+      }
       courierId = courier.id;
+
+      // El repartidor queda marcado en la misma transacción que el pedido. Si
+      // se escribieran por separado existiría un instante en que el pedido dice
+      // que lo lleva alguien y ese alguien dice que está libre.
+      await tx
+        .update(schema.courier)
+        .set({ currentOrderId: order.id, updatedAt: new Date() })
+        .where(
+          scoped(
+            schema.courier.organizationId,
+            input.organizationId,
+            eq(schema.courier.id, courier.id)
+          )
+        );
     }
 
     // Despachar sin motorizado dejaría el pedido en la calle sin nadie a quien
@@ -328,6 +349,29 @@ export async function transitionOrder(
     const orderRow = updated[0];
     if (!orderRow) return { ok: false as const, reason: "conflict" as const };
 
+    /**
+     * Cerrar el pedido LIBERA al repartidor, en la misma transacción.
+     *
+     * Tiene que ser aquí y no en una llamada posterior: si el pedido queda
+     * entregado y la liberación se pierde, el motorizado se queda marcado como
+     * ocupado para siempre y la asignación automática deja de contar con él.
+     * Acotado a ESE pedido, para que una llamada tardía no lo suelte del
+     * siguiente que ya recogió.
+     */
+    if (terminal && courierId) {
+      await tx
+        .update(schema.courier)
+        .set({ currentOrderId: null, updatedAt: new Date() })
+        .where(
+          scoped(
+            schema.courier.organizationId,
+            input.organizationId,
+            eq(schema.courier.id, courierId),
+            eq(schema.courier.currentOrderId, orderRow.id)
+          )
+        );
+    }
+
     await tx.insert(schema.deliveryEvent).values({
       id: newId("deliveryEvent"),
       organizationId: input.organizationId,
@@ -349,6 +393,14 @@ export async function transitionOrder(
       type: "delivery.order.updated",
       data: { orderId: result.order.id },
     });
+    // El panel de calle pinta la disponibilidad de cada repartidor: si el
+    // pedido lo ocupó o lo liberó, esa lista cambió y hay que decirlo.
+    if (result.order.courierId) {
+      publish(input.organizationId, {
+        type: "delivery.courier.updated",
+        data: { courierId: result.order.courierId },
+      });
+    }
   }
 
   return result;

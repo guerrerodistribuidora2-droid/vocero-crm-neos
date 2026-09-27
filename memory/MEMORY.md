@@ -30,6 +30,8 @@ para no tener dos convenciones compitiendo en el mismo repo.
   romper a nadie.
 - [La superficie vive tras la bandera](delivery-superficie-tras-bandera.md) —
   una guardia por método, y un test que las cuenta.
+- [Panel del repartidor](delivery-panel-repartidor.md) — enlace firmado en vez
+  de cuenta, y el cerrojo de la asignación automática.
 
 ## Estado
 

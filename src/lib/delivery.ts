@@ -41,6 +41,40 @@ export const STREET_STATES = ["asignado", "en_camino", "entregado"] as const;
 
 export type DeliverySource = "whatsapp" | "pipeline";
 
+/** Cómo paga el cliente. El repartidor lo necesita antes de salir. */
+export type PaymentMethod = "efectivo" | "transferencia";
+
+export const PAYMENT_LABELS: Record<PaymentMethod, string> = {
+  efectivo: "Efectivo",
+  transferencia: "Transferencia",
+};
+
+/**
+ * Estado del repartidor, en los tres valores que pide la operación.
+ *
+ * NO es una columna. Se DERIVA de `available`, `active` y `currentOrderId`,
+ * que ya existen y que son lo que el cerrojo de asignación toca. Guardarlo
+ * aparte crearía una cuarta fuente de verdad que puede contradecir a las
+ * otras tres: un motorizado marcado AVAILABLE con un pedido encima.
+ */
+export type DriverStatus = "AVAILABLE" | "ON_DELIVERY" | "OFF_DUTY";
+
+export function driverStatus(courier: {
+  available: boolean;
+  active: boolean;
+  currentOrderId: string | null;
+}): DriverStatus {
+  if (courier.currentOrderId) return "ON_DELIVERY";
+  if (!courier.active || !courier.available) return "OFF_DUTY";
+  return "AVAILABLE";
+}
+
+export const DRIVER_STATUS_LABELS: Record<DriverStatus, string> = {
+  AVAILABLE: "Disponible",
+  ON_DELIVERY: "En entrega",
+  OFF_DUTY: "Fuera de turno",
+};
+
 /** Cómo fue el envío del código. Ver contracts/pin-entrega.md. */
 export type PinStatus = "pendiente" | "enviado" | "fallido" | "no_enviable";
 

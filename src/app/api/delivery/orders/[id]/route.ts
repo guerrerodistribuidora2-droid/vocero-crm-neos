@@ -9,6 +9,7 @@ import { getOrderWithLog } from "@/server/delivery/orders";
 import { transitionOrder, type TransitionResult } from "@/server/delivery/service";
 import { REJECTION_MESSAGES } from "@/server/delivery/states";
 import { issuePin } from "@/server/delivery/pin";
+import { autoAssignCourier } from "@/server/delivery/assign";
 
 export const dynamic = "force-dynamic";
 
@@ -85,5 +86,28 @@ export const PATCH = withAuth(async (session, req: Request, ctx: Ctx) => {
     pin = { status: outcome.status, ...(outcome.error ? { error: outcome.error } : {}) };
   }
 
-  return Response.json({ ok: true, state: res.order.state, pin });
+  /**
+   * Comida lista ⇒ se busca repartidor automáticamente.
+   *
+   * Cuelga de aquí, fuera de la transacción, por el mismo motivo que el código
+   * de recepción: el pedido ya está listo en firme y reclamar un motorizado no
+   * puede costar ese hecho. Si no hay nadie libre, el pedido se queda en
+   * `listo` esperando, que es lo que pasa en un local cuando todos están en la
+   * calle.
+   *
+   * La asignación manual del panel sigue funcionando: esto solo actúa cuando
+   * nadie lo asignó todavía, así que un despachador puede adelantarse.
+   */
+  let assigned: { courierName?: string; reason?: string } | null = null;
+  if (body.data.state === "listo") {
+    const outcome = await autoAssignCourier({
+      organizationId: session.organizationId,
+      orderId: id,
+    });
+    assigned = outcome.ok
+      ? { courierName: outcome.courierName }
+      : { reason: outcome.reason };
+  }
+
+  return Response.json({ ok: true, state: res.order.state, pin, assigned });
 });

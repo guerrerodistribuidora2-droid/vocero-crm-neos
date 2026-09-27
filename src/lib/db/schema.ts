@@ -1089,11 +1089,45 @@ export const courier = pgTable(
      * este motorizado y la bitácora de entregas no se toca jamás.
      */
     active: boolean("active").notNull().default(true),
+    /**
+     * El pedido que lleva ahora mismo. NULL = no lleva ninguno.
+     *
+     * Es el CERROJO de la asignación automática. Reclamar un motorizado es un
+     * UPDATE condicionado a que esto siga en NULL; si dos pedidos salen de
+     * cocina a la vez y eligen al mismo repartidor, solo uno de los dos
+     * UPDATE encuentra fila y el otro pasa al siguiente candidato. Con un
+     * "consulta y luego asigna" ganarían los dos y el mismo motorizado saldría
+     * con dos pedidos.
+     *
+     * Sin clave foránea a propósito: `delivery_order.courier_id` ya apunta en
+     * el sentido contrario, y cerrar el círculo obliga a un orden de borrado
+     * que no aporta nada. La consistencia la mantiene el servicio, que libera
+     * esto en la misma transacción en que cierra el pedido.
+     */
+    currentOrderId: text("current_order_id"),
+    /**
+     * Huella del enlace de acceso del repartidor.
+     *
+     * El motorizado NO es un usuario del sistema: no tiene cuenta ni
+     * contraseña (research D12). Entra por un enlace único que el despachador
+     * le comparte. Aquí vive la HUELLA de ese enlace, nunca el enlace: una
+     * base filtrada no debe entregar accesos utilizables, igual que no entrega
+     * códigos de recepción.
+     */
+    accessTokenHash: text("access_token_hash"),
+    /** Cuándo se emitió el enlace vigente. Reemitir invalida el anterior. */
+    accessTokenIssuedAt: timestamp("access_token_issued_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [
     index("courier_org_active_idx").on(t.organizationId, t.active, t.available),
+    /**
+     * El enlace se resuelve por esta huella SIN saber de qué organización
+     * viene: es la única llave que trae el repartidor. Único para que una
+     * colisión sea imposible en vez de improbable.
+     */
+    uniqueIndex("courier_access_token_uq").on(t.accessTokenHash),
   ]
 );
 
@@ -1170,6 +1204,13 @@ export const deliveryOrder = pgTable(
      */
     amountCents: integer("amount_cents"),
     currency: text("currency"),
+    /**
+     * Cómo paga el cliente. El repartidor tiene que saberlo ANTES de llegar:
+     * llevar cambio o no llevarlo cambia el viaje. NULL = nadie lo capturó.
+     */
+    paymentMethod: text("payment_method", {
+      enum: ["efectivo", "transferencia"],
+    }),
     courierId: text("courier_id").references(() => courier.id, {
       onDelete: "set null",
     }),

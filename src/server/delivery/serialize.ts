@@ -1,8 +1,11 @@
 import type { schema } from "@/lib/db";
 import {
+  driverStatus,
   needsDetail,
   type DeliveryState,
   type DeliverySource,
+  type DriverStatus,
+  type PaymentMethod,
   type PinStatus,
 } from "@/lib/delivery";
 
@@ -36,6 +39,8 @@ export type SerializedOrder = {
   notes: string | null;
   amountCents: number | null;
   currency: string | null;
+  /** Cómo cobra el repartidor. Lo necesita antes de salir, para el cambio. */
+  paymentMethod: PaymentMethod | null;
   contactId: string;
   conversationId: string | null;
   leadId: string | null;
@@ -74,6 +79,7 @@ export function serializeOrder(
     notes: order.notes,
     amountCents: order.amountCents,
     currency: order.currency,
+    paymentMethod: (order.paymentMethod as PaymentMethod | null) ?? null,
     contactId: order.contactId,
     conversationId: order.conversationId,
     leadId: order.leadId,
@@ -128,6 +134,16 @@ export type SerializedCourier = {
   phone: string | null;
   available: boolean;
   active: boolean;
+  /** Derivado, no guardado. Ver `driverStatus` en lib/delivery. */
+  status: DriverStatus;
+  currentOrderId: string | null;
+  /**
+   * SI tiene enlace de acceso, no CUÁL es. El enlace completo se devuelve una
+   * sola vez, al emitirlo: de la base solo sale su huella, así que ni el
+   * servidor puede reconstruirlo. Si se pierde, se reemite.
+   */
+  hasAccessLink: boolean;
+  accessLinkIssuedAt: string | null;
 };
 
 export function serializeCourier(courier: CourierRow): SerializedCourier {
@@ -137,5 +153,9 @@ export function serializeCourier(courier: CourierRow): SerializedCourier {
     phone: courier.phone,
     available: courier.available,
     active: courier.active,
+    status: driverStatus(courier),
+    currentOrderId: courier.currentOrderId,
+    hasAccessLink: courier.accessTokenHash !== null,
+    accessLinkIssuedAt: courier.accessTokenIssuedAt?.toISOString() ?? null,
   };
 }
