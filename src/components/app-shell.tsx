@@ -29,6 +29,7 @@ export function AppShell({
   commit,
   agenda = false,
   delivery = false,
+  consumo = false,
   children,
 }: {
   branding: Branding;
@@ -41,6 +42,8 @@ export function AppShell({
   agenda?: boolean;
   /** 020 — ¿esta instancia entrega a domicilio? Lo decide el servidor. */
   delivery?: boolean;
+  /** ¿Existe el módulo de Consumo? El rol lo filtra aparte, en el nav. */
+  consumo?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -80,6 +83,7 @@ export function AppShell({
         theme={theme}
         agenda={agenda}
         delivery={delivery}
+        consumo={consumo}
         open={navOpen}
         onClose={() => setNavOpen(false)}
       />

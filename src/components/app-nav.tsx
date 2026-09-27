@@ -13,6 +13,7 @@ import {
   Inbox,
   Kanban,
   LogOut,
+  Receipt,
   Settings,
   Sparkles,
   Users,
@@ -71,6 +72,20 @@ const DELIVERY_ITEMS: NavItem[] = [
 ];
 
 /**
+ * "Consumo" pide DOS condiciones, no una: que la instancia tenga el módulo
+ * encendido y que quien mira sea el propietario. Un despachador entra a asignar
+ * motorizados, no a ver cuánto le cuesta al dueño cada respuesta.
+ *
+ * Va justo después de Resultados porque es la misma pregunta continuada: ahí se
+ * ve qué se vendió, aquí lo que costó atender esas ventas.
+ */
+const CONSUMO_ITEM: NavItem = {
+  href: "/billing",
+  label: "Consumo",
+  icon: Receipt,
+};
+
+/**
  * Un renglón del menú, como el `side-item` del mockup de la landing: texto
  * semibold, esquinas de 9px y, activo, lavado del acento con tinta azul.
  * Exportado para la vista previa de Configuración → Marca, que pinta la barra.
@@ -95,6 +110,7 @@ export function AppNav({
   commit,
   agenda = false,
   delivery = false,
+  consumo = false,
   open = false,
   onClose,
 }: {
@@ -120,6 +136,13 @@ export function AppNav({
    * —ni debe— leer variables de entorno.
    */
   delivery?: boolean;
+  /**
+   * ¿Existe el módulo de Consumo en esta instancia? Lo decide el servidor.
+   * Ojo: esto solo dice que EXISTE. Quién puede verlo se decide abajo con el
+   * rol, y la propia pantalla lo vuelve a comprobar — un menú que esconde un
+   * renglón no protege la ruta.
+   */
+  consumo?: boolean;
   /** Solo aplica por debajo de `lg`: en escritorio el lateral es fijo. */
   open?: boolean;
   onClose?: () => void;
@@ -153,8 +176,21 @@ export function AppNav({
   const conAgenda = agenda
     ? [...NAV.slice(0, 2), AGENDA_ITEM, ...NAV.slice(2)]
     : NAV;
+  // Consumo cuelga de Resultados: qué se vendió, y luego qué costó atenderlo.
+  const conConsumo =
+    consumo && role === "owner"
+      ? (() => {
+          const i = conAgenda.findIndex((it) => it.href === "/results");
+          if (i === -1) return [...conAgenda, CONSUMO_ITEM];
+          return [
+            ...conAgenda.slice(0, i + 1),
+            CONSUMO_ITEM,
+            ...conAgenda.slice(i + 1),
+          ];
+        })()
+      : conAgenda;
   // 020 — La operación del día va primero. Ver DELIVERY_ITEMS.
-  const items = delivery ? [...DELIVERY_ITEMS, ...conAgenda] : conAgenda;
+  const items = delivery ? [...DELIVERY_ITEMS, ...conConsumo] : conConsumo;
 
   return (
     <aside

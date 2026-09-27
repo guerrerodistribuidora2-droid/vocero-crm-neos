@@ -43,6 +43,16 @@ const envSchema = z.object({
   // superficie da 404, el agente no puede crear pedidos y el pipeline no
   // dispara ninguno. Ej.: DELIVERY=on
   DELIVERY: z.string().optional(),
+  // Modulo de Consumo: panel de costos de Meta e IA sobre la actividad real.
+  // Apagado por defecto. Ademas de la bandera, la pantalla exige rol owner: la
+  // bandera dice si el modulo existe, el rol dice a quien le toca verlo.
+  // Ej.: CONSUMO=on
+  CONSUMO: z.string().optional(),
+  // El CRM no puede saber si el WABA tiene metodo de pago vinculado: no existe
+  // esa columna y Meta no lo expone por el camino que usamos para enviar. Se
+  // declara aqui. Sin ella se asume que NO hay tarjeta, que es el supuesto
+  // conservador: hace visible el riesgo de que los envios se corten.
+  META_BILLING_CARD_LINKED: z.string().optional(),
   // 015: bases de los conectores. Solo se sobreescriben para apuntar a los
   // mocks en el self-test; en producción se usan las reales.
   ZOOM_BASE_URL: z.string().url().default("https://api.zoom.us/v2"),
